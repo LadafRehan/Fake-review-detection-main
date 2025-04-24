@@ -1,5 +1,6 @@
+
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS  # Import CORS
 import joblib
 import pandas as pd
 
@@ -10,21 +11,23 @@ CORS(app)  # Enable CORS for all routes
 model = joblib.load('../Model Trainer/model.pkl')
 vectorizer = joblib.load('../Model Trainer/vectorizer.pkl')
 
-@app.route('/analyze', methods=['POST'])
-def analyze_reviews():
-    data = request.get_json()
 
-    if not data or 'reviews' not in data:
-        return jsonify({"error": "Invalid JSON format or missing 'reviews' key"}), 400
 
-    reviews_data = data['reviews']
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
 
-    # Ensure it's a list of dictionaries with required keys
-    if not isinstance(reviews_data, list) or not all('Review_Text' in item and 'Rating' in item for item in reviews_data):
-        return jsonify({"error": "Each review must contain 'Review_Text' and 'Rating'"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
 
-    # Convert to DataFrame
-    df = pd.DataFrame(reviews_data)
+    # Read the uploaded file
+    df = pd.read_csv(file)
+
+    # Check if required columns are present
+    if 'Review_Text' not in df.columns or 'Rating' not in df.columns:
+        return jsonify({"error": "Invalid file format"}), 400
 
     # Vectorize the reviews
     reviews_vectorized = vectorizer.transform(df['Review_Text'])
@@ -32,18 +35,22 @@ def analyze_reviews():
     # Make predictions
     predictions = model.predict(reviews_vectorized)
 
-    # Calculate fake review statistics
+    # Calculate the percentage of fake reviews
     fake_count = sum(predictions == 0)
     total_reviews = len(predictions)
     fake_percentage = (fake_count / total_reviews) * 100
+
+    # Determine product status
     product_status = "Fake" if fake_percentage >= 50 else "Genuine"
 
+    # Convert values to standard Python types
     return jsonify({
-        "total_reviews": int(total_reviews),
-        "fake_reviews": int(fake_count),
-        "fake_percentage": float(fake_percentage),
+        "total_reviews": int(total_reviews),  # Convert to int
+        "fake_reviews": int(fake_count),  # Convert to int
+        "fake_percentage": float(fake_percentage),  # Convert to float
         "product_status": product_status
     })
+
 
 if __name__ == '__main__':
     app.run(debug=True)
